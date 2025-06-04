@@ -1,26 +1,32 @@
 package ru.netology;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
 public class Main {
-    private static final String stringPattern = "abc";
-    private static final int stringCount = 10_000;
-    private static final int stringLength = 100_000;
+    private static final String STRING_PATTERN = "abc";
+    private static final int STRING_QUANTITY = 10_000;
+    private static final int STRING_SIZE = 100_000;
+    public static final int QUEUE_SIZE = 100;
 
-    private static final BlockingQueue<String> stringsA = new ArrayBlockingQueue<>(100);
-    private static final BlockingQueue<String> stringsB = new ArrayBlockingQueue<>(100);
-    private static final BlockingQueue<String> stringsC = new ArrayBlockingQueue<>(100);
+    public static final List<BlockingQueue<String>> queues = Arrays.asList(
+            new ArrayBlockingQueue<>(QUEUE_SIZE),
+            new ArrayBlockingQueue<>(QUEUE_SIZE),
+            new ArrayBlockingQueue<>(QUEUE_SIZE)
+    );
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         Thread generateStrings = new Thread(() -> {
-            for (int i = 0; i < stringCount; i++) {
-                String string = generateText(stringPattern, stringLength);
+            for (int i = 0; i < STRING_QUANTITY; i++) {
+                String string = generateText(STRING_PATTERN, STRING_SIZE);
                 try {
-                    stringsA.put(string);
-                    stringsB.put(string);
-                    stringsC.put(string);
+                    for (BlockingQueue<String> queue : queues) {
+                        queue.put(string);
+                    }
                 } catch (InterruptedException e) {
                     return;
                 }
@@ -29,67 +35,35 @@ public class Main {
 
         generateStrings.start();
 
-        Thread countCharA = new Thread(() -> {
-            int counterCharA;
-            int max = 0;
-            char charToFind = 'a';
-            for (int i = 0; i < stringCount; i++) {
-                try {
-                    String stringA = stringsA.take();
-                    counterCharA = counter(stringA, charToFind);
-                    if (counterCharA > max){
-                        max = counterCharA;
+        List<Thread> consumers = new ArrayList<>();
+        for (int i = 0; i < queues.size(); i++) {
+            int index = i;
+            char c = (char) ('a' + i);
+            Thread consumer = new Thread(() -> {
+                BlockingQueue<String> queue = queues.get(index);
+                String maxString = "";
+                long maxCount = 0;
+                for (int j = 0; j < STRING_QUANTITY; j++) {
+                    try{String s = queue.take();
+                        long count = countChar(s, c);
+                        if (count > maxCount) {
+                            maxCount = count;
+                            maxString = s;
+                        }
+                    } catch (InterruptedException e) {
+                        return;
                     }
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
                 }
-            }
-            System.out.println("Максимальное количество символа 'a' " + max);
-        });
+                System.out.printf("Max count of letter %c - %d - found in the following string: " +
+                        "%s\n", c, maxCount, maxString.substring(0, 75) + "...");
+            });
+            consumer.start();
+            consumers.add(consumer);
+        }
 
-        countCharA.start();
-
-        Thread countCharB = new Thread(() -> {
-            int counterCharB;
-            int max = 0;
-            char charToFind = 'b';
-            for (int i = 0; i < stringCount; i++) {
-                try {
-                    String stringB = stringsB.take();
-                    counterCharB = counter(stringB, charToFind);
-                    if (counterCharB > max){
-                        max = counterCharB;
-                    }
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-            System.out.println("Максимальное количество символа 'b' " + max);
-        });
-
-        countCharB.start();
-
-        Thread countCharC = new Thread(() -> {
-            int counterCharC;
-            int max = 0;
-            char charToFind = 'c';
-            for (int i = 0; i < stringCount; i++) {
-                try {
-                    String stringC = stringsC.take();
-                    counterCharC = counter(stringC, charToFind);
-                    if (counterCharC > max){
-                        max = counterCharC;
-                    }
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-            System.out.println("Максимальное количество символа 'c' " + max);
-        });
-
-        countCharC.start();
-
-
+        for (Thread consumer : consumers) {
+            consumer.join();
+        }
     }
 
     public static String generateText(String letters, int length) {
@@ -101,7 +75,7 @@ public class Main {
         return text.toString();
     }
 
-    public static int counter(String string, char charToFind) {
+    public static int countChar(String string, char charToFind) {
         int count = 0;
         char[] chars = string.toCharArray();
         for (char ch : chars) {
